@@ -6,14 +6,14 @@ plugins {
     kotlin("jvm") version "1.2.71"
 }
 
-apply(from= "publish.gradle")
-
 group = "com.techbyflorin.android"
 version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
 }
+
+apply(from= "publish.gradle")
 
 dependencies {
     compile(gradleApi())
