@@ -2,6 +2,8 @@ package com.techbyflorin.android.buildSrc.plugins
 
 import com.google.gson.Gson
 import com.techbyflorin.android.buildSrc.models.ModelJson
+import com.techbyflorin.android.buildSrc.models.Project
+import org.eclipse.jgit.api.Git
 import org.gradle.api.Plugin
 import org.gradle.api.initialization.Settings
 import java.io.File
@@ -16,26 +18,76 @@ import java.io.File
 class ComposeBuildsPlugin : Plugin<Settings> {
 
     override fun apply(target: Settings) {
-        val moduleJsonFile = "${target.rootDir}/modules.json"
+        println("Trying module.json handling.")
 
-        println("Modules.json found at $moduleJsonFile")
+        val moduleJsonPath = "${target.rootDir}/modules.json"
+        val moduleJsonFile = File(moduleJsonPath)
+        if (!moduleJsonFile.exists()) {
+            println("module.json file not found")
+            return
+        }
 
-        try {
-            val jsonValue = File(moduleJsonFile).readText()
-            val modules = Gson().fromJson(jsonValue, ModelJson::class.java)
+        // fetch projects from module.json if exist
+        val subProjects = getSubProjects(moduleJsonFile.readText())
 
-            println("Projects found = ${modules.projects}")
+        // clone projects that wants to be used as compound build
+        val composedNames = subProjects.asSequence().filter { it.composed }.map {
+            cloneProject(it, target.rootDir)
+        }.toList()
 
-            modules.projects.forEach { project ->
-                when (project.composed) {
-                    true -> println("Applying project ${project.name} as composed")
-                    else -> println("Applying project ${project.name} as binary depency")
-                }
+        val projectToCompose = composedNames.filter { it.isNotEmpty() }
+        projectToCompose.takeIf { it.isEmpty() }?.run {
+            println("No Projects to compose")
+        }
 
-//                target.includeBuild(project)
-            }
+        // applying composed builds
+        projectToCompose.forEach {
+            println("Including project $it as compose build")
+            target.settings.includeBuild("./$it")
+        }
+    }
+
+    /**
+     * Returns a list of the listed subProject within modules.json
+     *
+     * @param modulesJson represent modules.json data
+     */
+    private fun getSubProjects(modulesJson: String): List<Project> {
+        return try {
+            val modules = Gson().fromJson(modulesJson, ModelJson::class.java)
+            modules.projects
         } catch (ex: Exception) {
             println("Error parsing modules.json. Error = $ex")
+            listOf()
+        }
+    }
+
+    /**
+     * Clones a [project] if needs to be part of a composed build
+     *
+     * @return the cloned repo
+     */
+    private fun cloneProject(project: Project, rootDir: File): String {
+        project.isCloneable.takeIf { it } ?: return ""
+
+        val location = "$rootDir/${project.name}"
+        val locationFile = File(location)
+
+        // if project already cloned then just return name
+        locationFile.exists().takeIf { !it } ?: return project.name
+
+        return try {
+            Git.cloneRepository()
+                    .setBare(false)
+                    .setURI(project.repoUrl)
+                    .setBranch(project.branch)
+                    .setDirectory(locationFile)
+                    .call()
+
+            project.name
+        } catch (ex: Exception) {
+            println("Error trying to clone ${project.name}. Error = $ex")
+            ""
         }
     }
 }

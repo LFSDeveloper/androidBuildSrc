@@ -20,6 +20,13 @@ data class ModelJson(
 data class Project(
         val name: String,
         val repoUrl: String,
-        val branch: String,
+        val branch: String = "develop",
         val composed: Boolean = false
-) : Serializable
+) : Serializable {
+
+    /**
+     * Tell is an instance of this [Project] can be cloned
+     */
+    val isCloneable: Boolean
+        get() = name.isNotEmpty() && repoUrl.isNotEmpty() && branch.isNotEmpty()
+}
